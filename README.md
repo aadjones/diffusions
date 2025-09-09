@@ -15,7 +15,7 @@ A toolkit for exploring and manipulating latent space representations in Stable 
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.13 (recommended for best performance)
 - macOS with Apple Silicon (MPS support) or x86_64 with CUDA/CPU
 
 ### Setup
@@ -23,20 +23,22 @@ A toolkit for exploring and manipulating latent space representations in Stable 
 1. Clone the repository:
 
 ```bash
-git clone <repository-url>
-cd diffusion-art
+git clone https://github.com/aadjones/diffusions
+cd diffusions
 ```
 
-2. Create and activate a virtual environment:
+2. Set up development environment:
+
+```bash
+make setup    # Create virtual environment
+make install  # Install all dependencies
+```
+
+Alternatively, manual setup:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-3. Install dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
@@ -47,6 +49,8 @@ pip install -r requirements.txt
 Launch the Streamlit app for interactive exploration:
 
 ```bash
+make run  # Recommended
+# or
 streamlit run app.py
 ```
 
@@ -118,30 +122,44 @@ src/diffusion_art/
 
 ## Development
 
+The project includes a comprehensive Makefile for development tasks:
+
+```bash
+# Development workflow
+make format     # Format code (black + isort + pre-commit hooks)
+make lint       # Lint code (flake8)
+make typecheck  # Type checking (mypy)
+make test       # Run tests
+make clean      # Clean up cache files
+```
+
 ### Running Tests
 
 ```bash
-# Run all tests
+# Using Makefile (recommended)
+make test
+
+# Direct pytest usage
 pytest
-
-# Run with coverage
-pytest --cov=src/diffusion_art
-
-# Run specific test file
-pytest tests/unit/core/test_interpolation.py -v
+pytest --cov=src/diffusion_art                    # With coverage
+pytest tests/unit/core/test_interpolation.py -v   # Specific test
 ```
 
 ### Project Structure
 
 ```
-diffusion-art/
-├── src/diffusion_art/     # Main package
-├── tests/                 # Test suite
-├── app.py                 # Streamlit application
-├── requirements.txt       # Dependencies
-├── pytest.ini           # Test configuration
-├── .gitignore           # Git ignore rules
-└── README.md            # This file
+diffusion/
+├── src/diffusion_art/          # Main package
+├── tests/                      # Test suite
+├── app.py                      # Streamlit application
+├── requirements.txt            # Dependencies
+├── Makefile                    # Development commands
+├── pyproject.toml             # Project configuration
+├── .pre-commit-config.yaml    # Pre-commit hooks
+├── .flake8                    # Flake8 configuration
+├── mypy.ini                   # MyPy configuration
+├── .github/workflows/ci.yml   # CI/CD pipeline
+└── CLAUDE.md                  # AI assistant instructions
 ```
 
 ## Technical Details
@@ -159,6 +177,7 @@ Stable Diffusion 1.5 uses a 4-channel latent space of size 64×64, representing 
 
 - Model loading is cached using Streamlit's `@st.cache_resource`
 - Supports MPS (Apple Silicon) and CPU backends
+- Includes `watchdog` for faster file watching and auto-reload
 - Batch processing capabilities for generating sequences
 
 ## Limitations
