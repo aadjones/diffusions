@@ -96,6 +96,13 @@ app.py                     # Streamlit application entry point
 - Cache model loading with `@st.cache_resource` for expensive operations
 - Optimize image sizes before upload for better performance
 
+## Continuous Integration
+
+The project includes GitHub Actions CI that runs on every push and PR:
+- Uses Python 3.13 (matches local development)
+- Runs `make test`, `make lint`, and `make typecheck`
+- Ensures code quality before merging
+
 ## Testing Philosophy
 
 Focus unit tests on **core interpolation algorithms and edge cases**. Test mathematical properties (SLERP magnitude preservation, boundary conditions) rather than UI interactions or model loading.
