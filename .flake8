@@ -1,0 +1,9 @@
+[flake8]
+max-line-length = 88
+max-complexity = 18
+ignore = E203, E266, E501, W503, W291, W292, W293, F403, F401
+per-file-ignores =
+    # Allow unused imports in __init__.py files
+    __init__.py:F401
+    # Allow module level imports not at top of file for app.py (needed for path setup)
+    app.py:E402

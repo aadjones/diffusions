@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "Bash(mypy:*)",
+      "WebSearch",
+      "Bash(pre-commit:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
