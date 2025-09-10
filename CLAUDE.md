@@ -82,6 +82,23 @@ app.py                     # Streamlit application entry point
 - **Model Caching**: VAE model loading cached in Streamlit with `@st.cache_resource`
 - **Image Processing**: Fixed 512×512 input size with LANCZOS resampling
 
+### Device Management Gotchas
+
+**⚠️ Critical:** All tensor operations must be on the same device. Common pitfalls:
+
+- **✅ Correct:** `torch.randn(1, 4, 64, 64, device=base_tensor.device)`
+- **❌ Wrong:** `torch.randn(1, 4, 64, 64)` (defaults to CPU)
+- **✅ Correct:** `torch.linspace(0, 1, 64, device=base_tensor.device)`
+- **❌ Wrong:** `torch.linspace(0, 1, 64)` (creates CPU tensor)
+
+**Common sources of device mismatches:**
+- PCA/sklearn operations (always return CPU tensors)
+- New tensor creation without explicit device
+- Constants and range tensors (`linspace`, `arange`, `zeros`, `ones`)
+- Random operations (`randn`, `randperm`, `rand`)
+
+**Fix:** Always specify `device=existing_tensor.device` when creating new tensors.
+
 ## Streamlit Best Practices (2025)
 
 ### Image Display

@@ -7,7 +7,7 @@ from typing import Dict
 class FeatureFlags:
     """Centralized feature flag management."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Default feature states
         self._flags: Dict[str, bool] = {
             # Debug and development features
