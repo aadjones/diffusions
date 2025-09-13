@@ -14,7 +14,8 @@
       "Bash(streamlit run:*)",
       "Bash(grep:*)",
       "mcp__ide__executeCode",
-      "Bash(pytest:*)"
+      "Bash(pytest:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": [],
     "ask": []

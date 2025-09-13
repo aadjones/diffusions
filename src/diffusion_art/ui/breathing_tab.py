@@ -1,16 +1,15 @@
-"""Latent breathing tab functionality."""
+"""Refactored latent breathing tab using controller pattern."""
 
+import asyncio
 import io
-import time
 from typing import Optional, Tuple
 
 import streamlit as st
-import torch
 from PIL import Image
 
-from ..core.noise import breathing_animation, structured_noise
 from ..models.vae import SD15VAE
 from ..utils import presets
+from .controllers import BreathingTabController
 
 
 def _handle_image_selection() -> Optional[Image.Image]:
@@ -171,147 +170,172 @@ def _handle_preview_controls(
 
 
 def _generate_and_display_preview(
-    vae_model: SD15VAE,
-    base_latent: torch.Tensor,
+    controller: BreathingTabController,
     animation_type: str,
     noise_strength: float,
     preview_step: Optional[int],
     preview_seed: int,
     manual_t: Optional[float],
 ) -> None:
-    """Generate and display preview frame."""
+    """Generate and display preview frame using controller."""
     with st.spinner("Generating preview..."):
         try:
-            if animation_type in [
-                "distance_threshold",
-                "standard",
-                "momentum",
-                "attracted_home",
-                "deep_note",
-            ]:
-                # Random walk preview
-                from ..core.random_walk import (
-                    deep_note_walk,
-                    distance_threshold_walk,
-                    latent_random_walk,
-                    momentum_random_walk,
-                )
+            # Create animation config
+            config = controller.create_animation_config(
+                animation_type=animation_type,
+                frames=31,  # Preview frames
+                fps=24,
+                noise_strength=noise_strength,
+                seed=preview_seed,
+            )
 
-                # Generate walk path (cached in session state)
-                walk_key = f"random_walk_{id(base_latent)}_{animation_type}_{noise_strength}_{preview_seed}"
-                if walk_key not in st.session_state:
-                    with st.spinner("Generating random walk path..."):
-                        if animation_type == "distance_threshold":
-                            walk_path, turn_around_step = distance_threshold_walk(
-                                base_latent,
-                                steps=31,
-                                step_size=noise_strength,
-                                explore_fraction=0.62,
-                                seed=preview_seed,
-                            )
-                            # Store turn around info for display
-                            st.session_state[f"{walk_key}_turnaround"] = (
-                                turn_around_step
-                            )
-                        elif animation_type == "standard":
-                            walk_path = latent_random_walk(
-                                base_latent,
-                                steps=31,
-                                step_size=noise_strength,
-                                seed=preview_seed,
-                            )
-                        elif animation_type == "momentum":
-                            walk_path = momentum_random_walk(
-                                base_latent,
-                                steps=31,
-                                step_size=noise_strength,
-                                momentum=0.8,
-                                seed=preview_seed,
-                            )
-                        elif animation_type == "attracted_home":
-                            walk_path = latent_random_walk(
-                                base_latent,
-                                steps=31,
-                                step_size=noise_strength,
-                                return_home=True,
-                                seed=preview_seed,
-                            )
-                        elif animation_type == "deep_note":
-                            walk_path = deep_note_walk(
-                                base_latent,
-                                steps=31,
-                                step_size=noise_strength,
-                                seed=preview_seed,
-                            )
-
-                        st.session_state[walk_key] = walk_path
-
-                # Get the specific step for preview
-                walk_path = st.session_state[walk_key]
-                step_index = preview_step if preview_step is not None else 0
-                preview_latent = walk_path[min(step_index, len(walk_path) - 1)]
-
+            # Determine frame index based on animation type
+            if animation_type in ["sine", "heartbeat", "pulse"]:
+                # For breathing patterns, use manual_t to calculate frame index
+                if manual_t is not None:
+                    frame_index = int(manual_t * 30)  # 0-30 frames
+                else:
+                    frame_index = 0
             else:
-                # Breathing pattern preview (sine, heartbeat, pulse)
-                from ..core.noise import add_gaussian_noise, get_pattern_function
+                # For random walks, use preview_step
+                frame_index = preview_step if preview_step is not None else 0
 
-                pattern_func = get_pattern_function(
-                    animation_type
-                )  # animation_type is now the pattern
-                t_value = manual_t if manual_t is not None else 0.0
-                current_strength = noise_strength * pattern_func(t_value)
-                preview_latent = add_gaussian_noise(
-                    base_latent, current_strength, seed=preview_seed
-                )
+            # Generate preview
+            preview_img, error, metadata = controller.generate_preview(
+                config, frame_index
+            )
 
-            preview_img = vae_model.decode(preview_latent)
+            if error:
+                st.error(f"❌ Error generating preview: {error}")
+                return
 
-            if animation_type in [
-                "distance_threshold",
-                "standard",
-                "momentum",
-                "attracted_home",
-                "deep_note",
-            ]:
+            if preview_img is None:
+                st.error("❌ No preview image generated")
+                return
+
+            # Display preview with appropriate caption
+            if animation_type in ["sine", "heartbeat", "pulse"]:
+                t_display = manual_t if manual_t is not None else 0.0
                 caption = (
-                    f"🚶 Random Walk Preview (Step {preview_step}, {animation_type})"
+                    f"🌊 {animation_type.title()} Breathing Preview (t={t_display:.2f})"
+                )
+            else:
+                caption = (
+                    f"🚶 Random Walk Preview (Step {frame_index}, {animation_type})"
                 )
 
                 # Add turn around info for distance threshold walks
-                if animation_type == "distance_threshold":
-                    turn_around_key = f"{walk_key}_turnaround"
-                    if turn_around_key in st.session_state:
-                        turn_step = st.session_state[turn_around_key]
-                        if preview_step <= turn_step:
-                            caption += " [Exploring]"
-                        else:
-                            caption += " [Returning home via SLERP]"
-                        st.write(f"🔄 Turned around at step {turn_step}")
+                if (
+                    animation_type == "distance_threshold"
+                    and metadata
+                    and metadata.get("turn_around_step")
+                ):
+                    turn_step = metadata["turn_around_step"]
+                    if frame_index <= turn_step:
+                        caption += " [Exploring]"
+                    else:
+                        caption += " [Returning home via SLERP]"
+                    st.write(f"🔄 Turned around at step {turn_step}")
 
-                st.image(preview_img, caption=caption, width="stretch")
-            else:
-                t_display = manual_t if manual_t is not None else 0.0
-                st.image(
-                    preview_img,
-                    caption=f"🌊 {animation_type.title()} Breathing Preview (t={t_display:.2f}, strength: {current_strength:.3f})",
-                    width="stretch",
-                )
+            st.image(preview_img, caption=caption, width="stretch")
+
+            # Show performance info if available
+            if metadata:
+                if metadata.get("generation_time"):
+                    st.caption(f"⚡ Generated in {metadata['generation_time']:.2f}s")
 
         except Exception as e:
             st.error(f"❌ Error generating preview: {str(e)}")
+
+
+async def _handle_animation_generation_async(
+    controller: BreathingTabController,
+    animation_type: str,
+    noise_strength: float,
+    duration_seconds: float,
+    fps: int,
+    anim_seed: int,
+) -> None:
+    """Handle animation generation asynchronously."""
+    anim_frames = int(duration_seconds * fps)
+
+    # Create config
+    config = controller.create_animation_config(
+        animation_type=animation_type,
+        frames=anim_frames,
+        fps=fps,
+        noise_strength=noise_strength,
+        seed=anim_seed,
+    )
+
+    # Create progress bar
+    progress_bar = st.progress(0)
+    progress_text = st.empty()
+
+    def progress_callback(progress: float, message: str) -> None:
+        progress_bar.progress(progress)
+        progress_text.text(message)
+
+    try:
+        # Generate animation asynchronously
+        video_bytes, error, metrics = await controller.generate_animation_async(
+            config, progress_callback
+        )
+
+        if error:
+            st.error(f"❌ Error generating animation: {error}")
             return
+
+        if video_bytes is None:
+            st.error("❌ No video generated")
+            return
+
+        progress_bar.progress(1.0)
+        progress_text.text("Animation generation complete!")
+
+        st.success("✅ Animation generated!")
+
+        # Display metrics
+        if metrics:
+            st.info(
+                f"📊 Generated {metrics['total_frames']} frames "
+                f"in {metrics['generation_time_seconds']:.1f}s "
+                f"(Peak memory: {metrics['peak_memory_mb']:.1f}MB)"
+            )
+
+            if metrics.get("turn_around_step"):
+                st.info(
+                    f"🔄 Distance threshold reached at step {metrics['turn_around_step']}/{metrics['total_frames']}"
+                )
+
+        # Embed video
+        st.video(video_bytes, format="video/mp4", start_time=0)
+
+        # Download button
+        st.download_button(
+            label="📥 Download Animation MP4",
+            data=video_bytes,
+            file_name=f"latent_{animation_type}_{anim_frames}f_{fps}fps.mp4",
+            mime="video/mp4",
+            type="primary",
+        )
+
+    except Exception as e:
+        st.error(f"❌ Error generating animation: {str(e)}")
+    finally:
+        progress_bar.empty()
+        progress_text.empty()
 
 
 def _handle_animation_generation(
-    vae_model: SD15VAE,
-    base_latent: torch.Tensor,
+    controller: BreathingTabController,
     animation_type: str,
     noise_strength: float,
 ) -> None:
     """Handle animation generation UI and processing."""
     st.subheader("🎬 Generate Animation")
 
-    # Time-based controls only - who thinks in frame duration milliseconds?!
+    # Animation controls
     col6a, col6b, col8 = st.columns(3)
     with col6a:
         duration_seconds = st.slider(
@@ -324,182 +348,38 @@ def _handle_animation_generation(
             "Animation Seed", value=42, min_value=0, max_value=9999
         )
 
-    # Calculate frames and frame duration from sensible inputs
+    # Calculate and display frame info
     anim_frames = int(duration_seconds * fps)
-    frame_duration = round(1000 / fps)  # Round instead of truncate for accurate timing
+    frame_duration = round(1000 / fps)
     st.info(f"📊 {anim_frames} frames at {fps} fps ({frame_duration}ms per frame)")
-    print(
-        f"🔢 UI Calculation: {duration_seconds}s × {fps}fps = {anim_frames} frames, {frame_duration}ms duration"
-    )
 
     if st.button("🎬 Generate Animation", type="primary", key="generate_animation_btn"):
-        with st.spinner("Generating animation..."):
-            try:
-                progress_bar = st.progress(0)
-
-                # Generate animation frames
-                if animation_type in [
-                    "distance_threshold",
-                    "standard",
-                    "momentum",
-                    "attracted_home",
-                    "deep_note",
-                ]:
-                    # Use actual random walk path for animation
-                    from ..core.random_walk import (
-                        deep_note_walk,
-                        distance_threshold_walk,
-                        latent_random_walk,
-                        momentum_random_walk,
-                    )
-
-                    if animation_type == "distance_threshold":
-                        latent_frames, turn_around_step = distance_threshold_walk(
-                            base_latent,
-                            steps=anim_frames,
-                            step_size=noise_strength,
-                            explore_fraction=0.62,
-                            seed=anim_seed,
-                        )
-                        st.info(
-                            f"🔄 Distance threshold reached at step {turn_around_step}/{anim_frames}"
-                        )
-                    elif animation_type == "standard":
-                        latent_frames = latent_random_walk(
-                            base_latent,
-                            steps=anim_frames,
-                            step_size=noise_strength,
-                            seed=anim_seed,
-                        )
-                    elif animation_type == "momentum":
-                        latent_frames = momentum_random_walk(
-                            base_latent,
-                            steps=anim_frames,
-                            step_size=noise_strength,
-                            momentum=0.8,
-                            seed=anim_seed,
-                        )
-                    elif animation_type == "attracted_home":
-                        latent_frames = latent_random_walk(
-                            base_latent,
-                            steps=anim_frames,
-                            step_size=noise_strength,
-                            return_home=True,
-                            seed=anim_seed,
-                        )
-                    elif animation_type == "deep_note":
-                        print(f"🎵 Starting deep_note_walk with {anim_frames} frames")
-                        latent_frames = deep_note_walk(
-                            base_latent,
-                            steps=anim_frames,
-                            step_size=noise_strength,
-                            seed=anim_seed,
-                        )
-                        print(
-                            f"✅ deep_note_walk complete, got {len(latent_frames)} frames"
-                        )
-
-                    # Single progress update for walk generation (avoid per-frame sync overhead)
-                    progress_bar.progress(0.5, text="Latent path generated")
-
-                else:
-                    # Generate breathing animation (sine, heartbeat, pulse)
-                    latent_frames = breathing_animation(
-                        base_latent,
-                        frames=anim_frames,
-                        max_strength=noise_strength,
-                        pattern=animation_type,  # animation_type is now the pattern
-                        seed=anim_seed,
-                    )
-
-                # Decode frames to images using batched processing
-                progress_bar.progress(0.5, text="Decoding frames to images...")
-
-                # Debug: Check if method exists
-                print(
-                    f"🔍 VAE model methods: {[m for m in dir(vae_model) if 'decode' in m]}"
-                )
-                print(f"🔍 Has decode_batch: {hasattr(vae_model, 'decode_batch')}")
-
-                try:
-                    print(
-                        f"🔄 About to call decode_batch with {len(latent_frames)} frames"
-                    )
-                    image_frames = vae_model.decode_batch(latent_frames, batch_size=8)
-                except Exception as e:
-                    print(f"❌ Batch decode failed: {e}")
-                    st.warning(f"Batch size 8 failed ({e}), trying smaller batches...")
-                    image_frames = vae_model.decode_batch(latent_frames, batch_size=4)
-                progress_bar.progress(1.0, text="Animation generation complete!")
-
-                # Fuck PIL GIF encoder - use temp files + ffmpeg
-                import subprocess
-                import tempfile
-
-                print(f"🎞️ Creating video: {len(image_frames)} images at {fps} fps")
-
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    # Save each frame as PNG
-                    for i, img in enumerate(image_frames):
-                        img.save(f"{temp_dir}/frame_{i:06d}.png")
-
-                    # Use ffmpeg to create MP4
-                    output_path = f"{temp_dir}/animation.mp4"
-                    cmd = [
-                        "ffmpeg",
-                        "-y",
-                        "-framerate",
-                        str(fps),
-                        "-i",
-                        f"{temp_dir}/frame_%06d.png",
-                        "-c:v",
-                        "libx264",
-                        "-pix_fmt",
-                        "yuv420p",
-                        "-crf",
-                        "18",  # High quality
-                        output_path,
-                    ]
-
-                    print(f"🔄 Running: {' '.join(cmd)}")
-                    result = subprocess.run(cmd, capture_output=True, text=True)
-
-                    if result.returncode == 0:
-                        # Read MP4 into buffer
-                        with open(output_path, "rb") as f:
-                            gif_buffer = io.BytesIO(f.read())
-                        print(
-                            f"✅ MP4 created successfully ({len(gif_buffer.getvalue())} bytes)"
-                        )
-                    else:
-                        print(f"❌ ffmpeg failed: {result.stderr}")
-                        raise Exception(f"ffmpeg failed: {result.stderr}")
-
-                st.success("✅ Animation generated!")
-
-                # Embed MP4 video directly in Streamlit
-                st.video(gif_buffer.getvalue(), format="video/mp4", start_time=0)
-
-                # Download button
-                st.download_button(
-                    label="📥 Download Animation MP4",
-                    data=gif_buffer.getvalue(),
-                    file_name=f"latent_{animation_type}_{anim_frames}f_{fps}fps.mp4",
-                    mime="video/mp4",
-                    type="primary",
-                )
-
-            except Exception as e:
-                st.error(f"❌ Error generating animation: {str(e)}")
+        # Run async animation generation
+        asyncio.run(
+            _handle_animation_generation_async(
+                controller,
+                animation_type,
+                noise_strength,
+                duration_seconds,
+                fps,
+                anim_seed,
+            )
+        )
 
 
 def render_breathing_tab(vae_model: SD15VAE) -> None:
-    """Render the latent breathing tab interface."""
+    """Render the refactored latent breathing tab interface."""
 
     st.header("🌊 Latent Breathing Experiment")
     st.write(
         "Add rhythmic noise to explore latent space neighborhoods around an image."
     )
+
+    # Initialize controller
+    if "breathing_controller" not in st.session_state:
+        st.session_state.breathing_controller = BreathingTabController(vae_model)
+
+    controller = st.session_state.breathing_controller
 
     # === PHASE 1: IMAGE SELECTION ===
     base_img = _handle_image_selection()
@@ -510,11 +390,10 @@ def render_breathing_tab(vae_model: SD15VAE) -> None:
     st.subheader("🔄 Processing")
 
     with st.spinner("Encoding base image to latent space..."):
-        try:
-            base_latent = vae_model.encode(base_img)
+        if controller.encode_base_image(base_img):
             st.success("✅ Base image encoded successfully")
-        except Exception as e:
-            st.error(f"❌ Error encoding image: {str(e)}")
+        else:
+            st.error("❌ Error encoding image")
             return
 
     # === PHASE 3: BREATHING CONTROLS ===
@@ -528,8 +407,7 @@ def render_breathing_tab(vae_model: SD15VAE) -> None:
 
     # Generate preview frame
     _generate_and_display_preview(
-        vae_model,
-        base_latent,
+        controller,
         animation_type,
         noise_strength,
         preview_step,
@@ -538,9 +416,28 @@ def render_breathing_tab(vae_model: SD15VAE) -> None:
     )
 
     # === PHASE 5: ANIMATION GENERATION ===
-    _handle_animation_generation(vae_model, base_latent, animation_type, noise_strength)
+    _handle_animation_generation(controller, animation_type, noise_strength)
 
-    # === PHASE 6: EXPERIMENT NOTES ===
+    # === PHASE 6: CACHE MANAGEMENT ===
+    with st.expander("⚡ Performance", expanded=False):
+        col_stats, col_clear = st.columns([2, 1])
+
+        with col_stats:
+            cache_stats = controller.get_cache_stats()
+            st.write("**Cache Status:**")
+            st.write(f"- Cached sequences: {cache_stats['cached_sequences']}")
+            st.write(f"- Total cached tensors: {cache_stats['total_cached_tensors']}")
+            st.write(f"- Cache limit: {cache_stats['cache_size_limit']}")
+
+        with col_clear:
+            if st.button(
+                "🧹 Clear Cache", help="Free up memory by clearing cached previews"
+            ):
+                controller.clear_cache()
+                st.success("Cache cleared!")
+                st.rerun()
+
+    # === PHASE 7: EXPERIMENT NOTES ===
     with st.expander("🧪 Experiment Notes", expanded=False):
         st.write(
             """
@@ -558,19 +455,9 @@ def render_breathing_tab(vae_model: SD15VAE) -> None:
         - **Heartbeat**: Double-beat pulse pattern
         - **Pulse**: Sharp pulse breathing pattern
 
-        **Breathing patterns:**
-        - **Sine**: Smooth, meditative breathing
-        - **Heartbeat**: Double-pulse like a heartbeat
-        - **Pulse**: Sharp, rhythmic pulses
-
-        **PCA Components:**
-        - **PC0**: Usually captures the most significant variation (lighting, style)
-        - **PC1-3**: Often control secondary features (pose, expression, color)
-        - **PC4+**: Fine details and subtle variations
-
         **Artistic applications:**
-        - **PCA (1.0-3.0)**: Coherent transformations following data manifold
-        - **Random noise (0.1-2.0)**: Dream-like morphing effects
+        - **Low strength (0.1-2.0)**: Subtle, dream-like morphing effects
+        - **Medium strength (1.0-3.0)**: Coherent transformations following data manifold
         - **High strength (3.0+)**: Abstract, surreal transformations
         """
         )

@@ -28,11 +28,29 @@ st.caption(
     "Interactive interpolation between images in Stable Diffusion's latent space"
 )
 
-# Create tabs for different experiments
-tab1, tab2 = st.tabs(["🔄 Interpolation", "🌊 Latent Breathing"])
+# Initialize session state for tab selection
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "interpolation"
 
-with tab1:
+# Create tab selection with pills
+tab_options = {"interpolation": "🔄 Interpolation", "breathing": "🌊 Latent Breathing"}
+
+selected_tab = st.pills(
+    "Choose experiment:",
+    options=list(tab_options.keys()),
+    format_func=lambda x: tab_options[x],
+    default=st.session_state.active_tab,
+    key="tab_selector",
+)
+
+# Update session state
+st.session_state.active_tab = selected_tab
+
+# Add some spacing
+st.write("")
+
+# Render the appropriate tab content
+if selected_tab == "interpolation":
     render_interpolation_tab(vae_model)
-
-with tab2:
+elif selected_tab == "breathing":
     render_breathing_tab(vae_model)
