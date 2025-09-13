@@ -113,7 +113,52 @@ def create_interpolation_path(
     if steps < 2:
         raise ValueError("Need at least 2 steps for interpolation path")
 
-    t_values = torch.linspace(0, 1, steps)
+    t_values = torch.linspace(0, 1, steps, device=z0.device)
     interpolate_fn = slerp if method == "slerp" else lerp
 
     return [interpolate_fn(z0, z1, float(t)) for t in t_values]
+
+
+def slerp_batch(
+    z0: torch.Tensor, z1: torch.Tensor, t_values: torch.Tensor
+) -> List[torch.Tensor]:
+    """Vectorized SLERP for multiple t values at once.
+
+    More efficient than calling slerp() in a loop when generating many interpolation steps.
+
+    Args:
+        z0: Starting latent tensor (1, C, H, W)
+        z1: Ending latent tensor (1, C, H, W)
+        t_values: Tensor of interpolation values (N,)
+
+    Returns:
+        List of interpolated tensors
+    """
+    # Flatten for easier vectorized computation
+    a, b = z0.flatten(1), z1.flatten(1)
+
+    # Normalize to unit vectors
+    a = a / (a.norm(dim=1, keepdim=True) + 1e-8)
+    b = b / (b.norm(dim=1, keepdim=True) + 1e-8)
+
+    # Compute angle between vectors (only once)
+    dot = (a * b).sum(dim=1, keepdim=True).clamp(-0.999999, 0.999999)
+    theta = torch.acos(dot)
+    sin_theta = torch.sin(theta)
+
+    # Compute original magnitude for restoration
+    original_mag = z0.flatten(1).norm(dim=1, keepdim=True)
+
+    results = []
+    for t in t_values:
+        # Compute interpolation weights for this t
+        w0 = torch.sin((1 - t) * theta) / sin_theta
+        w1 = torch.sin(t * theta) / sin_theta
+
+        # Interpolate and restore shape/magnitude
+        out = (w0 * a + w1 * b).view_as(z0)
+        out = out.flatten(1)
+        out = out / (out.norm(dim=1, keepdim=True) + 1e-8) * original_mag
+        results.append(out.view_as(z0))
+
+    return results

@@ -12,7 +12,9 @@
       "Bash(make:*)",
       "Bash(python:*)",
       "Bash(streamlit run:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "mcp__ide__executeCode",
+      "Bash(pytest:*)"
     ],
     "deny": [],
     "ask": []

@@ -86,11 +86,11 @@ def _handle_image_selection() -> Optional[Image.Image]:
     return base_img
 
 
-def _handle_breathing_controls() -> Tuple[float, int, str]:
+def _handle_breathing_controls() -> Tuple[float, str]:
     """Handle breathing controls UI and return control values."""
     st.subheader("🎛️ Breathing Controls")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
     with col1:
         noise_strength = st.slider(
@@ -103,11 +103,6 @@ def _handle_breathing_controls() -> Tuple[float, int, str]:
         )
 
     with col2:
-        frames_count = st.slider(
-            "Frames", 10, 60, 30, 1, help="Number of frames in animation"
-        )
-
-    with col3:
         animation_type = st.selectbox(
             "Animation Type",
             [
@@ -115,6 +110,7 @@ def _handle_breathing_controls() -> Tuple[float, int, str]:
                 "standard",
                 "momentum",
                 "attracted_home",
+                "deep_note",
                 "sine",
                 "heartbeat",
                 "pulse",
@@ -122,7 +118,7 @@ def _handle_breathing_controls() -> Tuple[float, int, str]:
             help="Type of latent space animation",
         )
 
-    return noise_strength, frames_count, animation_type
+    return noise_strength, animation_type
 
 
 def _handle_preview_controls(
@@ -134,6 +130,7 @@ def _handle_preview_controls(
         "standard",
         "momentum",
         "attracted_home",
+        "deep_note",
     ]:
         # Random walk controls
         col4, col5 = st.columns(2)
@@ -190,9 +187,11 @@ def _generate_and_display_preview(
                 "standard",
                 "momentum",
                 "attracted_home",
+                "deep_note",
             ]:
                 # Random walk preview
                 from ..core.random_walk import (
+                    deep_note_walk,
                     distance_threshold_walk,
                     latent_random_walk,
                     momentum_random_walk,
@@ -237,6 +236,13 @@ def _generate_and_display_preview(
                                 return_home=True,
                                 seed=preview_seed,
                             )
+                        elif animation_type == "deep_note":
+                            walk_path = deep_note_walk(
+                                base_latent,
+                                steps=31,
+                                step_size=noise_strength,
+                                seed=preview_seed,
+                            )
 
                         st.session_state[walk_key] = walk_path
 
@@ -265,6 +271,7 @@ def _generate_and_display_preview(
                 "standard",
                 "momentum",
                 "attracted_home",
+                "deep_note",
             ]:
                 caption = (
                     f"🚶 Random Walk Preview (Step {preview_step}, {animation_type})"
@@ -304,19 +311,26 @@ def _handle_animation_generation(
     """Handle animation generation UI and processing."""
     st.subheader("🎬 Generate Animation")
 
-    col6, col7, col8 = st.columns(3)
-    with col6:
-        anim_frames = st.slider(
-            "Animation Frames", 10, 60, 30, help="Number of frames in the animation"
+    # Time-based controls only - who thinks in frame duration milliseconds?!
+    col6a, col6b, col8 = st.columns(3)
+    with col6a:
+        duration_seconds = st.slider(
+            "Duration (seconds)", 1.0, 30.0, 7.0, 0.5, help="Total animation duration"
         )
-    with col7:
-        frame_duration = st.slider(
-            "Frame Duration (ms)", 50, 300, 150, help="Speed of animation"
-        )
+    with col6b:
+        fps = st.slider("Frame Rate", 10, 60, 24, 1, help="Frames per second")
     with col8:
         anim_seed = st.number_input(
             "Animation Seed", value=42, min_value=0, max_value=9999
         )
+
+    # Calculate frames and frame duration from sensible inputs
+    anim_frames = int(duration_seconds * fps)
+    frame_duration = round(1000 / fps)  # Round instead of truncate for accurate timing
+    st.info(f"📊 {anim_frames} frames at {fps} fps ({frame_duration}ms per frame)")
+    print(
+        f"🔢 UI Calculation: {duration_seconds}s × {fps}fps = {anim_frames} frames, {frame_duration}ms duration"
+    )
 
     if st.button("🎬 Generate Animation", type="primary", key="generate_animation_btn"):
         with st.spinner("Generating animation..."):
@@ -329,9 +343,11 @@ def _handle_animation_generation(
                     "standard",
                     "momentum",
                     "attracted_home",
+                    "deep_note",
                 ]:
                     # Use actual random walk path for animation
                     from ..core.random_walk import (
+                        deep_note_walk,
                         distance_threshold_walk,
                         latent_random_walk,
                         momentum_random_walk,
@@ -371,10 +387,20 @@ def _handle_animation_generation(
                             return_home=True,
                             seed=anim_seed,
                         )
+                    elif animation_type == "deep_note":
+                        print(f"🎵 Starting deep_note_walk with {anim_frames} frames")
+                        latent_frames = deep_note_walk(
+                            base_latent,
+                            steps=anim_frames,
+                            step_size=noise_strength,
+                            seed=anim_seed,
+                        )
+                        print(
+                            f"✅ deep_note_walk complete, got {len(latent_frames)} frames"
+                        )
 
-                    # Update progress for walk generation
-                    for i in range(len(latent_frames)):
-                        progress_bar.progress((i + 1) / len(latent_frames) * 0.5)
+                    # Single progress update for walk generation (avoid per-frame sync overhead)
+                    progress_bar.progress(0.5, text="Latent path generated")
 
                 else:
                     # Generate breathing animation (sine, heartbeat, pulse)
@@ -386,39 +412,80 @@ def _handle_animation_generation(
                         seed=anim_seed,
                     )
 
-                # Decode frames to images
-                image_frames = []
-                for i, latent_frame in enumerate(latent_frames):
-                    img_frame = vae_model.decode(latent_frame)
-                    image_frames.append(img_frame)
-                    progress_bar.progress(
-                        0.5 + (i + 1) / len(latent_frames) * 0.5
-                    )  # Second 50% for decoding
+                # Decode frames to images using batched processing
+                progress_bar.progress(0.5, text="Decoding frames to images...")
 
-                # Create GIF
-                gif_buffer = io.BytesIO()
-                image_frames[0].save(
-                    gif_buffer,
-                    format="GIF",
-                    save_all=True,
-                    append_images=image_frames[1:],
-                    duration=frame_duration,
-                    loop=0,
+                # Debug: Check if method exists
+                print(
+                    f"🔍 VAE model methods: {[m for m in dir(vae_model) if 'decode' in m]}"
                 )
-                gif_buffer.seek(0)
+                print(f"🔍 Has decode_batch: {hasattr(vae_model, 'decode_batch')}")
+
+                try:
+                    print(
+                        f"🔄 About to call decode_batch with {len(latent_frames)} frames"
+                    )
+                    image_frames = vae_model.decode_batch(latent_frames, batch_size=8)
+                except Exception as e:
+                    print(f"❌ Batch decode failed: {e}")
+                    st.warning(f"Batch size 8 failed ({e}), trying smaller batches...")
+                    image_frames = vae_model.decode_batch(latent_frames, batch_size=4)
+                progress_bar.progress(1.0, text="Animation generation complete!")
+
+                # Fuck PIL GIF encoder - use temp files + ffmpeg
+                import subprocess
+                import tempfile
+
+                print(f"🎞️ Creating video: {len(image_frames)} images at {fps} fps")
+
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    # Save each frame as PNG
+                    for i, img in enumerate(image_frames):
+                        img.save(f"{temp_dir}/frame_{i:06d}.png")
+
+                    # Use ffmpeg to create MP4
+                    output_path = f"{temp_dir}/animation.mp4"
+                    cmd = [
+                        "ffmpeg",
+                        "-y",
+                        "-framerate",
+                        str(fps),
+                        "-i",
+                        f"{temp_dir}/frame_%06d.png",
+                        "-c:v",
+                        "libx264",
+                        "-pix_fmt",
+                        "yuv420p",
+                        "-crf",
+                        "18",  # High quality
+                        output_path,
+                    ]
+
+                    print(f"🔄 Running: {' '.join(cmd)}")
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+
+                    if result.returncode == 0:
+                        # Read MP4 into buffer
+                        with open(output_path, "rb") as f:
+                            gif_buffer = io.BytesIO(f.read())
+                        print(
+                            f"✅ MP4 created successfully ({len(gif_buffer.getvalue())} bytes)"
+                        )
+                    else:
+                        print(f"❌ ffmpeg failed: {result.stderr}")
+                        raise Exception(f"ffmpeg failed: {result.stderr}")
 
                 st.success("✅ Animation generated!")
-                st.image(
-                    gif_buffer.getvalue(),
-                    caption=f"🎬 {animation_type.title()} Animation ({len(image_frames)} frames)",
-                )
+
+                # Embed MP4 video directly in Streamlit
+                st.video(gif_buffer.getvalue(), format="video/mp4", start_time=0)
 
                 # Download button
                 st.download_button(
-                    label="📥 Download Animation GIF",
+                    label="📥 Download Animation MP4",
                     data=gif_buffer.getvalue(),
-                    file_name=f"latent_{animation_type}_{anim_frames}f_{frame_duration}ms.gif",
-                    mime="image/gif",
+                    file_name=f"latent_{animation_type}_{anim_frames}f_{fps}fps.mp4",
+                    mime="video/mp4",
                     type="primary",
                 )
 
@@ -451,7 +518,7 @@ def render_breathing_tab(vae_model: SD15VAE) -> None:
             return
 
     # === PHASE 3: BREATHING CONTROLS ===
-    noise_strength, frames_count, animation_type = _handle_breathing_controls()
+    noise_strength, animation_type = _handle_breathing_controls()
 
     # === PHASE 4: PREVIEW ===
     st.subheader("🎯 Animation Preview")
@@ -484,6 +551,7 @@ def render_breathing_tab(vae_model: SD15VAE) -> None:
         - **Standard**: Pure random walk with no constraints
         - **Momentum**: Builds directional momentum for flowing paths
         - **Attracted Home**: Gradually biases back toward starting point
+        - **Deep Note**: THX-inspired cinematic progression: distant start → meandering → dramatic SLERP arrival → hold
 
         **Breathing Patterns** (oscillate around original):
         - **Sine**: Smooth sinusoidal breathing rhythm

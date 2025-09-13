@@ -285,3 +285,120 @@ def momentum_random_walk(
         path.append(current_latent.clone())
 
     return path
+
+
+def deep_note_walk(
+    target_latent: torch.Tensor,
+    steps: int = 168,  # Default for 24fps * 7s total, arriving at 7s exactly
+    step_size: float = 2.0,
+    meander_fraction: float = 0.5,  # 50% of total time meandering (3.5s)
+    arrival_fraction: float = 1.0,  # Use 100% - no hold phase, arrive at final frame
+    initial_distance: float = 4.0,  # How far to start from target
+    drift_strength: float = 0.015,  # How strongly to drift toward target during meander
+    seed: Optional[int] = None,
+) -> List[torch.Tensor]:
+    """THX Deep Note inspired animation: start distant, meander with drift, dramatic SLERP arrival.
+
+    Mimics the classic THX Deep Note progression:
+    1. Start at a distant, chaotic point in latent space
+    2. Meander randomly with gentle drift toward target
+    3. Sudden dramatic SLERP interpolation to target
+    4. Hold at target for remainder
+
+    Timeline (for 10s @ 24fps = 240 frames, or 7s arrival @ 24fps = 168 frames):
+    - Frames 0-59 (3.5s): Meander with drift toward target
+    - Frames 59-118 (3.5s): Dramatic SLERP to target
+    - Frames 118-168 (3s): Hold at target
+
+    Args:
+        target_latent: The target latent to eventually reach
+        steps: Total number of steps in animation
+        step_size: Size of random steps during meandering
+        meander_fraction: Fraction of time spent meandering (0.35 = 35%)
+        arrival_fraction: When to arrive at target as fraction of total time (0.7 = 70%)
+        initial_distance: How far from target to start (higher = more chaotic start)
+        drift_strength: How much to drift toward target during meander phase
+        seed: Random seed for reproducible animations
+
+    Returns:
+        List of latent tensors forming the deep note path
+    """
+    if seed is not None:
+        torch.manual_seed(seed)
+
+    # Calculate phase boundaries - no hold phase, just meander + pull
+    meander_steps = int(steps * meander_fraction)
+    pull_steps = (
+        steps - meander_steps - 1
+    )  # Remaining steps for pull phase (subtract 1 for initial frame)
+
+    print(
+        f"🎵 Deep Note phases: 1 start + {meander_steps} meander + {pull_steps} pull = {steps} total"
+    )
+
+    # Pre-allocate path list for memory efficiency
+    path = [None] * steps
+    path_idx = 0
+
+    # Phase 1: Generate distant starting point
+    base_magnitude = target_latent.std().item()
+    adapted_distance = initial_distance * base_magnitude
+
+    # Create chaotic starting point by adding large random noise to target
+    start_noise = torch.randn_like(target_latent) * adapted_distance
+    current_latent = target_latent + start_noise  # Start directly without extra clone
+    path[path_idx] = current_latent.clone()
+    path_idx += 1
+
+    adapted_step_size = step_size * base_magnitude * 0.3
+
+    # Pre-allocate noise tensor to reuse memory
+    noise_tensor = torch.empty_like(current_latent)
+
+    # Phase 2: Meandering (weak pull)
+    for step_idx in range(meander_steps):
+        # Weak meandering with minimal pull
+        progress = step_idx / (meander_steps + pull_steps)  # Overall progress 0 to 1
+        exponential_factor = progress**3  # Cubic curve for dramatic end pull
+        current_pull_strength = drift_strength + (0.6 * exponential_factor)
+
+        # Generate noise (constant throughout)
+        noise_tensor.normal_(0, adapted_step_size)
+
+        # Add increasing gravitational pull toward target
+        target_direction = target_latent - current_latent
+        noise_tensor.add_(target_direction, alpha=current_pull_strength)
+
+        # Update current latent in-place
+        current_latent.add_(noise_tensor)
+        path[path_idx] = current_latent.clone()
+        path_idx += 1
+
+    # Phase 3: Strong pull toward target (final approach)
+    for step_idx in range(pull_steps):
+        # Strong exponential pull in final phase
+        progress = (meander_steps + step_idx) / (
+            meander_steps + pull_steps
+        )  # Overall progress
+        exponential_factor = progress**3  # Cubic curve for dramatic end pull
+        current_pull_strength = drift_strength + (
+            0.8 * exponential_factor
+        )  # Stronger pull in final phase
+
+        # Generate noise (constant throughout)
+        noise_tensor.normal_(0, adapted_step_size)
+
+        # Add increasing gravitational pull toward target
+        target_direction = target_latent - current_latent
+        noise_tensor.add_(target_direction, alpha=current_pull_strength)
+
+        # Update current latent in-place
+        current_latent.add_(noise_tensor)
+        path[path_idx] = current_latent.clone()
+        path_idx += 1
+
+    # Final frame: Force exact target (crystal clear arrival)
+    path[-1] = target_latent.clone()
+    print(f"🎯 Final frame set to exact target (frame {len(path)})")
+
+    return path
