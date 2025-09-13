@@ -155,7 +155,7 @@ Desktop.ini
 *.pth
 *.pt
 *.ckpt
-models/
+/models/
 cache/
 .cache/
 

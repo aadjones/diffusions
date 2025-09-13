@@ -21,7 +21,8 @@
       "Bash(sphinx-build:*)",
       "Bash(xargs:*)",
       "Read(//Users/adj/Documents/Code/app-development/**)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []
