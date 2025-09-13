@@ -20,7 +20,8 @@
       "Bash(sphinx-quickstart:*)",
       "Bash(sphinx-build:*)",
       "Bash(xargs:*)",
-      "Read(//Users/adj/Documents/Code/app-development/**)"
+      "Read(//Users/adj/Documents/Code/app-development/**)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
