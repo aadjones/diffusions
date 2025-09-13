@@ -16,7 +16,11 @@
       "mcp__ide__executeCode",
       "Bash(pytest:*)",
       "Bash(mkdir:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(sphinx-quickstart:*)",
+      "Bash(sphinx-build:*)",
+      "Bash(xargs:*)",
+      "Read(//Users/adj/Documents/Code/app-development/**)"
     ],
     "deny": [],
     "ask": []

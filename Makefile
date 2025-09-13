@@ -1,4 +1,4 @@
-.PHONY: clean setup install format lint typecheck run test help
+.PHONY: clean setup install format lint typecheck run test docs docs-clean help
 
 # Default target
 help:
@@ -11,6 +11,8 @@ help:
 	@echo "  typecheck - Type check with mypy"
 	@echo "  run       - Run the Streamlit app"
 	@echo "  test      - Run tests with pytest"
+	@echo "  docs      - Build documentation with Sphinx"
+	@echo "  docs-clean - Clean documentation build files"
 
 clean:
 	@echo "Cleaning up..."
@@ -54,3 +56,13 @@ test:
 	@echo "Running tests..."
 	pytest
 	@echo "Tests complete."
+
+docs:
+	@echo "Building documentation..."
+	cd docs && make html
+	@echo "Documentation built at docs/_build/html/index.html"
+
+docs-clean:
+	@echo "Cleaning documentation build files..."
+	cd docs && make clean
+	@echo "Documentation clean complete."
