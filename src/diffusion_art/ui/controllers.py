@@ -115,7 +115,10 @@ class BreathingTabController:
             return None, f"Preview generation failed: {str(e)}", None
 
     async def generate_animation_async(
-        self, config: AnimationConfig, progress_callback: Optional[Callable] = None
+        self,
+        config: AnimationConfig,
+        keyframe_interval: int = 1,
+        progress_callback: Optional[Callable] = None,
     ) -> Tuple[Optional[bytes], Optional[str], Optional[Dict[str, Any]]]:
         """Generate full animation asynchronously.
 
@@ -135,7 +138,7 @@ class BreathingTabController:
 
             # Generate full animation
             images, metrics = await self.animation_engine.generate_full_animation(
-                self._current_base_latent, config
+                self._current_base_latent, config, keyframe_interval=keyframe_interval
             )
 
             if progress_callback:

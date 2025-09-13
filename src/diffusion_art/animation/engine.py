@@ -135,7 +135,10 @@ class AnimationEngine:
         return self.preview_renderer.render_preview(frame_latent)
 
     async def generate_full_animation(
-        self, base_latent: torch.Tensor, config: AnimationConfig
+        self,
+        base_latent: torch.Tensor,
+        config: AnimationConfig,
+        keyframe_interval: int = 1,
     ) -> Tuple[List[Image.Image], AnimationMetrics]:
         """Generate complete animation sequence."""
         config.validate()
@@ -146,10 +149,19 @@ class AnimationEngine:
         else:
             latents, metrics = self.walk_generator.generate(base_latent, config)
 
-        # Convert to images using streaming decoder
-        images = []
-        async for img in self.streaming_decoder.decode_stream_async(latents):
-            images.append(img)
+        # Convert to images - use keyframe rendering if interval > 1
+        if keyframe_interval > 1:
+            from ..optimization import KeyframeRenderer
+
+            keyframe_renderer = KeyframeRenderer(self.vae_model)
+            images = keyframe_renderer.render_with_keyframes(
+                latents, keyframe_interval=keyframe_interval
+            )
+        else:
+            # Use streaming decoder for full quality
+            images = []
+            async for img in self.streaming_decoder.decode_stream_async(latents):
+                images.append(img)
 
         return images, metrics
 

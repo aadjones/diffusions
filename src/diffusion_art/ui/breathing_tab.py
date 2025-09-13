@@ -255,6 +255,7 @@ async def _handle_animation_generation_async(
     duration_seconds: float,
     fps: int,
     anim_seed: int,
+    keyframe_interval: int,
 ) -> None:
     """Handle animation generation asynchronously."""
     anim_frames = int(duration_seconds * fps)
@@ -277,9 +278,19 @@ async def _handle_animation_generation_async(
         progress_text.text(message)
 
     try:
+        # Show keyframe optimization info
+        if keyframe_interval > 1:
+            quality_info = {
+                8: "Fast mode (5x speedup)",
+                4: "Balanced mode (3x speedup)",
+            }
+            st.info(
+                f"⚡ Using {quality_info.get(keyframe_interval, 'keyframe optimization')}"
+            )
+
         # Generate animation asynchronously
         video_bytes, error, metrics = await controller.generate_animation_async(
-            config, progress_callback
+            config, keyframe_interval, progress_callback
         )
 
         if error:
@@ -342,7 +353,14 @@ def _handle_animation_generation(
             "Duration (seconds)", 1.0, 30.0, 7.0, 0.5, help="Total animation duration"
         )
     with col6b:
-        fps = st.slider("Frame Rate", 10, 60, 24, 1, help="Frames per second")
+        fps = st.slider(
+            "Frame Rate",
+            10,
+            30,
+            24,
+            1,
+            help="Frames per second (capped at 30 for performance)",
+        )
     with col8:
         anim_seed = st.number_input(
             "Animation Seed", value=42, min_value=0, max_value=9999
@@ -351,6 +369,40 @@ def _handle_animation_generation(
     # Calculate and display frame info
     anim_frames = int(duration_seconds * fps)
     frame_duration = round(1000 / fps)
+
+    # Performance Controls
+    st.subheader("⚡ Performance Settings")
+
+    perf_col1, perf_col2 = st.columns(2)
+    with perf_col1:
+        quality_mode = st.selectbox(
+            "Quality Mode",
+            options=["Fast (5x speedup)", "Balanced (3x speedup)", "Full Quality"],
+            index=0,  # Default to Fast
+            help="Fast mode renders keyframes and interpolates between them for major speed gains",
+        )
+
+    with perf_col2:
+        # Map quality modes to keyframe intervals
+        keyframe_map = {
+            "Fast (5x speedup)": 8,
+            "Balanced (3x speedup)": 4,
+            "Full Quality": 1,
+        }
+        keyframe_interval = keyframe_map[quality_mode]
+
+        # Show estimated render time
+        frames_to_decode = len(range(0, anim_frames, keyframe_interval))
+        if (anim_frames - 1) % keyframe_interval != 0:
+            frames_to_decode += 1
+
+        decode_time = frames_to_decode * 2  # 2 seconds per frame from benchmarks
+        st.metric(
+            label="Estimated Render Time",
+            value=f"{decode_time // 60:.0f}m {decode_time % 60:.0f}s",
+            delta=f"Decoding {frames_to_decode}/{anim_frames} frames",
+        )
+
     st.info(f"📊 {anim_frames} frames at {fps} fps ({frame_duration}ms per frame)")
 
     if st.button("🎬 Generate Animation", type="primary", key="generate_animation_btn"):
@@ -363,6 +415,7 @@ def _handle_animation_generation(
                 duration_seconds,
                 fps,
                 anim_seed,
+                keyframe_interval,
             )
         )
 
@@ -459,5 +512,12 @@ def render_breathing_tab(vae_model: SD15VAE) -> None:
         - **Low strength (0.1-2.0)**: Subtle, dream-like morphing effects
         - **Medium strength (1.0-3.0)**: Coherent transformations following data manifold
         - **High strength (3.0+)**: Abstract, surreal transformations
+
+        **Performance Modes:**
+        - **Fast (5x speedup)**: Keyframe interval=8, renders only 1/8th of frames
+        - **Balanced (3x speedup)**: Keyframe interval=4, renders 1/4th of frames
+        - **Full Quality**: Renders every frame (slower but highest fidelity)
+
+        *Keyframe modes interpolate missing frames in image space for major speed gains*
         """
         )
