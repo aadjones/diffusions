@@ -1,11 +1,13 @@
 """Test keyframe rendering speedup."""
 
+import pytest
 import torch
 
 from diffusion_art.models.vae import SD15VAE
 from diffusion_art.optimization.keyframe_renderer import KeyframeRenderer
 
 
+@pytest.mark.slow
 def test_keyframe_speedup():
     """Test keyframe rendering approach."""
     print("🚀 Testing Keyframe Rendering Speedup\n")
