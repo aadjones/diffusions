@@ -22,9 +22,13 @@
       "Bash(xargs:*)",
       "Read(//Users/adj/Documents/Code/app-development/**)",
       "Bash(tree:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(claude --version:*)",
+      "Bash(claude --update)",
+      "Bash(claude update:*)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "outputStyle": "default"
 }

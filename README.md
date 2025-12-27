@@ -8,6 +8,8 @@ A toolkit for exploring and manipulating latent space representations in Stable 
 - **Spherical Linear Interpolation (SLERP)**: Smooth transitions between latent representations
 - **Linear Interpolation (LERP)**: Alternative interpolation method for comparison
 - **Multi-way Interpolation**: Blend multiple latent vectors with custom weights
+- **Photography Studio**: Explore latent space through interactive contact sheets (NEW!)
+- **Latent Breathing**: Animated breathing effects and random walks
 - **Streamlit Web UI**: Interactive interface for real-time latent exploration
 - **Comprehensive Testing**: Unit tests for core algorithms and edge cases
 
@@ -54,11 +56,28 @@ make run  # Recommended
 streamlit run app.py
 ```
 
-This opens a web interface where you can:
+This opens a web interface with three modes:
 
-- Upload two images
-- Adjust the interpolation slider to morph between them
-- See real-time results in the latent space
+**🔄 Interpolation**: Morph between two images with SLERP/LERP
+**🌊 Latent Breathing**: Animated breathing effects and random walks
+**📷 Photography Studio**: Explore latent space through contact sheets
+
+### Photography Studio Mode
+
+The Photography Studio lets you **hunt for interesting images** by generating grids of variations:
+
+1. Upload any starting image
+2. Generate a contact sheet (3×3, 4×4, or 5×5 grid of variations)
+3. Click any interesting variation to explore that region deeper
+4. Repeat, following aesthetic "threads" through latent space
+
+**Perfect for:**
+- Finding unique interpretations of an image
+- Exploring "what's nearby" in latent space
+- Creating collections of related aesthetic variations
+- Discovering unexpected transformations
+
+See [PHOTOGRAPHY_STUDIO.md](PHOTOGRAPHY_STUDIO.md) for detailed guide.
 
 ### Programmatic Usage
 

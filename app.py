@@ -11,7 +11,11 @@ import torch
 from PIL import Image
 
 from diffusion_art.models.vae import SD15VAE
-from diffusion_art.ui import render_breathing_tab, render_interpolation_tab
+from diffusion_art.ui import (
+    render_breathing_tab,
+    render_interpolation_tab,
+    render_photography_tab,
+)
 
 
 @st.cache_resource
@@ -33,7 +37,11 @@ if "active_tab" not in st.session_state:
     st.session_state.active_tab = "interpolation"
 
 # Create tab selection with pills
-tab_options = {"interpolation": "🔄 Interpolation", "breathing": "🌊 Latent Breathing"}
+tab_options = {
+    "interpolation": "🔄 Interpolation",
+    "breathing": "🌊 Latent Breathing",
+    "photography": "📷 Photography Studio",
+}
 
 selected_tab = st.pills(
     "Choose experiment:",
@@ -54,3 +62,5 @@ if selected_tab == "interpolation":
     render_interpolation_tab(vae_model)
 elif selected_tab == "breathing":
     render_breathing_tab(vae_model)
+elif selected_tab == "photography":
+    render_photography_tab(vae_model)
